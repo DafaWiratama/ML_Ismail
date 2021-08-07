@@ -1,42 +1,42 @@
 import datetime
-import numpy as  np
-import tensorflow as tf
+import os
+
+from tensorflow.keras.layers import Bidirectional, LSTM
+import numpy as np
 import pandas as pd
-from tensorflow.python.keras.layers import Dense, LSTM, Flatten
-from tensorflow.python.keras.models import Sequential
+import tensorflow as tf
+from tqdm import tqdm
 
-
-def createModel():
-    model = Sequential()
-    model.add(LSTM(8, input_dim=(6, 60)))
-    model.add(LSTM(8, input_dim=(6, 60)))
-    model.add(Flatten())
-    model.add(Dense(3, activation='sigmoid'))
-    return model
-
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 if __name__ == '__main__':
-    dataframe = pd.read_csv("sensor.csv")
-    dataframe.pop('_key')
+    dataframe = pd.read_csv("dataset.csv")
 
-    y = pd.get_dummies(dataframe.pop('label'))
-    x = dataframe
+    input_features = 6
+    input_len = 32
+    label_size = 5
 
-    train_x = np.asarray(x)[0:64]
-    train_y = np.asarray(y)[0:64]
+    y = np.asarray(tf.one_hot(dataframe.pop("state").astype("category").cat.codes, label_size))
+    x = np.asarray(dataframe.values.tolist())
 
-    val_x = np.asarray(x)[64:]
-    val_y = np.asarray(y)[64:]
+    dataset_x = np.empty(shape=((len(x) - input_len), input_len, input_features + label_size))
+    dataset_y = np.empty(shape=((len(x) - input_len), label_size))
 
-    print(train_y)
+    model = tf.keras.models.Sequential([
+        Bidirectional(LSTM(32, return_sequences=True), input_shape=(input_len, input_features + label_size)),
+        Bidirectional(LSTM(8, return_sequences=False)),
+        tf.keras.layers.Dense(units=5, activation='softmax')
+    ])
+    model.compile(optimizer=tf.optimizers.Adam(lr=0.001), loss=tf.losses.CategoricalCrossentropy(), metrics=['accuracy'])
+    model.summary()
 
-    model = createModel()
-    model.compile(optimizer=tf.keras.optimizers.Adam(lr=.00001),
-                  loss="categorical_crossentropy",
-                  metrics=['accuracy', tf.keras.metrics.Precision()]
-                  )
+    for index in tqdm(range(len(dataset_x))):
+        data = np.empty(shape=(input_len, input_features + label_size))
+        for t in range(input_len):
+            data[t] = [*x[index + t], *y[index + t]]
+        dataset_x[index] = data
+        dataset_y[index] = y[index + input_len]
 
     log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
-
-    model.fit(x=train_x, y=train_y, validation_data=(val_x, val_y), epochs=64, batch_size=8, callbacks=[callback])
+    model.fit(dataset_x[:1000], dataset_y[:1000], validation_data=(dataset_x[1000:], dataset_y[1000:]), shuffle=True, epochs=32, callbacks=[callback])
