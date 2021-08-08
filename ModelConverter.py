@@ -1,4 +1,7 @@
+import os
 import tensorflow as tf
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 if __name__ == '__main__':
     converter = tf.lite.TFLiteConverter.from_saved_model("model")

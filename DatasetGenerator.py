@@ -24,7 +24,10 @@ class DatasetGenerator:
         for index in tqdm(range(len(dataset_x))):
             data = np.empty(shape=(time_frame, input_size))
             for t in range(time_frame):
-                data[t] = [*x[index + t], y[index + t]]
+                if t == time_frame:
+                    data[t] = [*x[index + t], y[index + t]]
+                else:
+                    data[t] = [*x[index + t], 0]
             dataset_x[index] = data
             dataset_y[index] = y[index + time_frame]
         return dataset_x, dataset_y
