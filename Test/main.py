@@ -1,10 +1,9 @@
-import datetime
 import os
-import matplotlib.pyplot as plt
-import tensorflow as tf
 import numpy as np
-from DatasetGenerator import DatasetGenerator
+import pandas as pd
+import tensorflow as tf
 from LSTMModel import LSTMModel
+from WindowGenerator import WindowGenerator
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
@@ -15,46 +14,22 @@ dict = {
     "WALK": 3,
     "RUN": 4,
 }
-
-METRICS = [
-    'accuracy'
-]
-
-
-def show_graph(history):
-    plt.plot(history.history['accuracy'])
-    plt.plot(history.history['val_accuracy'])
-    plt.title('model accuracy')
-    plt.ylabel('accuracy')
-    plt.xlabel('epoch')
-    plt.legend(['train', 'test'], loc='upper left')
-    plt.show()
-    # summarize history for loss
-    plt.plot(history.history['loss'])
-    plt.plot(history.history['val_loss'])
-    plt.title('model loss')
-    plt.ylabel('loss')
-    plt.xlabel('epoch')
-    plt.legend(['train', 'test'], loc='upper left')
-    plt.show()
-
-
 if __name__ == '__main__':
-    input_shape = (32, 7)
-    output_shape = 5
+    df = pd.read_csv("../dataset.csv")
+    n = len(df)
+    df["state"] = [dict[x] for x in df.state]
+    train_df = df[0:int(n * 0.7)]
+    val_df = df[int(n * 0.7):int(n * 0.9)]
+    test_df = df[int(n * 0.9):]
+    window = WindowGenerator(
+        input_width=32, label_width=1, shift=1,
+        label_columns=['state'], train_df=train_df, val_df=val_df, test_df=test_df)
 
-    dataset = DatasetGenerator("dataset.csv", input_shape, dict)
-
-    model = LSTMModel(input_shape, output_shape)
+    model = LSTMModel((32, 1), 5)
     model.compile(optimizer=tf.optimizers.Adam(lr=1e-3),
-                  loss=tf.losses.SparseCategoricalCrossentropy(from_logits=True),
-                  metrics=METRICS)
-
-    log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    tensorboard = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
-    early_stop = tf.keras.callbacks.EarlyStopping(patience=32, restore_best_weights=True)
-
-    history = model.fit(*dataset.train, validation_data=dataset.val, shuffle=True, epochs=8, batch_size=32, callbacks=[tensorboard, early_stop])
+                  loss=tf.losses.SparseCategoricalCrossentropy(),
+                  metrics='accuracy')
+    model.fit(window.train, epochs=8)
 
     input_data = np.asarray([[[-0.62249243, 2.2361844, 8.93546, 0.036193766, -0.026267206, 0.6966918, 3],
                               [0.11492168, 2.825158, 8.672098, 0.036193766, -0.026267206, 0.6966918, 3],
@@ -90,7 +65,4 @@ if __name__ == '__main__':
                               [0.06464344, 2.7581203, 9.466972, -0.001069014, 0.06047566, -0.04917465, 2],
                               ]], dtype=np.float32)
 
-    print(model.predict(input_data))
-    # show_graph(history)
-
-    # model.save("model", overwrite=True)
+    print(np.around(model.predict(input_data)*100))

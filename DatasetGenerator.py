@@ -1,7 +1,9 @@
+import sys
+
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-
+np.set_printoptions(threshold=sys.maxsize)
 
 class DatasetGenerator:
     def __init__(self, filename, input_shape, label_dict):
@@ -24,15 +26,15 @@ class DatasetGenerator:
         for index in tqdm(range(len(dataset_x))):
             data = np.empty(shape=(time_frame, input_size))
             for t in range(time_frame):
-                if t == time_frame:
+                if t < time_frame - 1:
                     data[t] = [*x[index + t], y[index + t]]
                 else:
                     data[t] = [*x[index + t], 0]
             dataset_x[index] = data
-            dataset_y[index] = y[index + time_frame]
+            dataset_y[index] = y[index + time_frame - 1]
         return dataset_x, dataset_y
 
-    def _split_dataset(self, train=.7, val=.2, shuffle=True):
+    def _split_dataset(self, train=.7, val=.2, shuffle=False):
         x, y = self._dataset
         size = len(x)
 
