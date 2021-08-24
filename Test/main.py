@@ -12,24 +12,20 @@ dict = {
     "SIT": 1,
     "STAND": 2,
     "WALK": 3,
-    "RUN": 4,
+    "SLEEP": 4,
 }
 if __name__ == '__main__':
-    df = pd.read_csv("../dataset.csv")
+    df = pd.read_csv("../datasetttt.csv")
     n = len(df)
     df["state"] = [dict[x] for x in df.state]
     train_df = df[0:int(n * 0.7)]
     val_df = df[int(n * 0.7):int(n * 0.9)]
     test_df = df[int(n * 0.9):]
-    window = WindowGenerator(
-        input_width=32, label_width=1, shift=1,
-        label_columns=['state'], train_df=train_df, val_df=val_df, test_df=test_df)
+    window = WindowGenerator(input_width=4, label_width=1, shift=1, label_columns=['state'], train_df=train_df, val_df=val_df, test_df=test_df)
 
     model = LSTMModel((32, 1), 5)
-    model.compile(optimizer=tf.optimizers.Adam(lr=1e-3),
-                  loss=tf.losses.SparseCategoricalCrossentropy(),
-                  metrics='accuracy')
-    model.fit(window.train, epochs=8)
+    model.compile(optimizer=tf.optimizers.Adam(lr=1e-3), loss=tf.losses.SparseCategoricalCrossentropy(from_logits=True), metrics='accuracy')
+    model.fit(window.train, validation_data=window.val, epochs=16, batch_size=8, shuffle=True)
 
     input_data = np.asarray([[[-0.62249243, 2.2361844, 8.93546, 0.036193766, -0.026267206, 0.6966918, 3],
                               [0.11492168, 2.825158, 8.672098, 0.036193766, -0.026267206, 0.6966918, 3],
@@ -62,7 +58,11 @@ if __name__ == '__main__':
                               [0.059855044, 2.705448, 9.241918, -0.07192938, 0.040317107, -0.12064589, 2],
                               [0.110133275, 2.6767175, 9.466972, -0.07192938, 0.040317107, -0.12064589, 2],
                               [0.110133275, 2.6767175, 9.466972, -0.001069014, 0.06047566, -0.04917465, 2],
-                              [0.06464344, 2.7581203, 9.466972, -0.001069014, 0.06047566, -0.04917465, 2],
+                              [0.06464344, 2.7581203, 9.466972, -0.001069014, 0.06047566, -0.04917465, 0],
                               ]], dtype=np.float32)
 
-    print(np.around(model.predict(input_data)*100))
+    print(np.around(model.predict(input_data) * 100))
+    # model.save("test")
+    model.evaluate(window.test)
+
+# model.evaluate(window.train)
