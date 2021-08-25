@@ -1,9 +1,9 @@
 import numpy as np
 import tensorflow as tf
-class WindowGenerator():
-    def __init__(self, input_width, label_width, shift,
-                 train_df, val_df, test_df,
-                 label_columns=None):
+
+
+class WindowGenerator:
+    def __init__(self, input_width, label_width, shift, train_df, val_df, test_df, label_columns=None):
         # Store the raw data.
         self.train_df = train_df
         self.val_df = val_df
@@ -43,8 +43,6 @@ class WindowGenerator():
         labels = features[:, self.labels_slice, :]
         if self.label_columns is not None:
             labels = tf.stack( [labels[:, :, self.column_indices[name]] for name in self.label_columns], axis=-1)
-        # Slicing doesn't preserve static shape information, so set the shapes
-        # manually. This way the `tf.data.Datasets` are easier to inspect.
         inputs.set_shape([None, self.input_width, None])
         labels.set_shape([None, self.label_width, None])
 
