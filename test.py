@@ -55,11 +55,6 @@ def dataset_motion_sense(type="Device Motion"):
 if __name__ == '__main__':
     dataframe = dataset_motion_sense("Accelerometer")
 
-    print(np.concatenate((a.values, b.values), axis=-1).shape)
-    print(a.head())
-    print(b.head())
-    print(dataframe.head())
-    exit()
     x, y = create_window(dataframe, window_size=256, stride=32)
 
     n_features, n_outputs = x.shape[2], x.shape[1]
