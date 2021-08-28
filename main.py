@@ -1,135 +1,82 @@
+import os
+
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
+from tensorflow.python.keras import Sequential
+from tensorflow.python.keras.layers import Dropout, Dense, ConvLSTM2D, Flatten
+from tensorflow.python.keras.utils.np_utils import to_categorical
 
 
-def get_ds_infos():
-    """
-    Read the file includes data subject information.
-
-    Data Columns:
-    0: code [1-24]
-    1: weight [kg]
-    2: height [cm]
-    3: age [years]
-    4: gender [0:Female, 1:Male]
-
-    Returns:
-        A pandas DataFrame that contains inforamtion about data subjects' attributes
-    """
-
-    dss = pd.read_csv("dataset/data_subjects_info.csv")
-    print("[INFO] -- Data subjects' information is imported.")
-
-    return dss
+# os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 
-def set_data_types(data_types=["userAcceleration"]):
-    """
-    Select the sensors and the mode to shape the final dataset.
+def create_window(dataframe, window_size=32, stride=1):
+    data = np.array(dataframe)
+    dataframe_size = len(dataframe)
+    feature_size = dataframe.values.shape[1] - 1
+    dataset_x = data[:, :-1]
+    dataset_y = data[:, -1]
 
-    Args:
-        data_types: A list of sensor data type from this list: [attitude, gravity, rotationRate, userAcceleration]
+    windows_x = np.empty(shape=(int(dataframe_size / stride), window_size, feature_size))
+    windows_y = np.empty(shape=(int(dataframe_size / stride), 1))
 
-    Returns:
-        It returns a list of columns to use for creating time-series from files.
-    """
-    dt_list = []
-    for t in data_types:
-        if t != "attitude":
-            dt_list.append([t + ".x", t + ".y", t + ".z"])
-        else:
-            dt_list.append([t + ".roll", t + ".pitch", t + ".yaw"])
+    for offset in range(0, dataframe_size - window_size, stride):
+        indices = np.asarray([i for i in range(window_size)]) + offset
+        windows_x[int(offset / stride)] = dataset_x[indices]
+        windows_y[int(offset / stride)] = dataset_y[offset + window_size - 1]
 
-    return dt_list
+    return windows_x, to_categorical(windows_y)
 
 
-def creat_time_series(dt_list, act_labels, trial_codes, mode="mag", labeled=True):
-    """
-    Args:
-        dt_list: A list of columns that shows the type of data we want.
-        act_labels: list of activites
-        trial_codes: list of trials
-        mode: It can be "raw" which means you want raw data
-        for every dimention of each data type,
-        [attitude(roll, pitch, yaw); gravity(x, y, z); rotationRate(x, y, z); userAcceleration(x,y,z)].
-        or it can be "mag" which means you only want the magnitude for each data type: (x^2+y^2+z^2)^(1/2)
-        labeled: True, if we want a labeld dataset. False, if we only want sensor values.
-
-    Returns:
-        It returns a time-series of sensor data.
-
-    """
-    num_data_cols = len(dt_list) if mode == "mag" else len(dt_list * 3)
-
-    if labeled:
-        dataset = np.zeros((0, num_data_cols + 7))  # "7" --> [act, code, weight, height, age, gender, trial]
-    else:
-        dataset = np.zeros((0, num_data_cols))
-
-    ds_list = get_ds_infos()
-
-    print("[INFO] -- Creating Time-Series")
-    for sub_id in ds_list["code"]:
-        for act_id, act in enumerate(act_labels):
-            for trial in trial_codes[act_id]:
-                fname = 'dataset/Device Motion/' + act + '_' + str(trial) + '/sub_' + str(int(sub_id)) + '.csv'
-                raw_data = pd.read_csv(fname)
-                raw_data = raw_data.drop(['Unnamed: 0'], axis=1)
-                vals = np.zeros((len(raw_data), num_data_cols))
-                for x_id, axes in enumerate(dt_list):
-                    if mode == "mag":
-                        vals[:, x_id] = (raw_data[axes] ** 2).sum(axis=1) ** 0.5
-                    else:
-                        vals[:, x_id * 3:(x_id + 1) * 3] = raw_data[axes].values
-                    vals = vals[:, :num_data_cols]
-                if labeled:
-                    lbls = np.array([[act_id,
-                                      sub_id - 1,
-                                      ds_list["weight"][sub_id - 1],
-                                      ds_list["height"][sub_id - 1],
-                                      ds_list["age"][sub_id - 1],
-                                      ds_list["gender"][sub_id - 1],
-                                      trial
-                                      ]] * len(raw_data))
-                    vals = np.concatenate((vals, lbls), axis=1)
-                dataset = np.append(dataset, vals, axis=0)
-    cols = []
-    for axes in dt_list:
-        if mode == "raw":
-            cols += axes
-        else:
-            cols += [str(axes[0][:-2])]
-
-    if labeled:
-        cols += ["act", "id", "weight", "height", "age", "gender", "trial"]
-
-    dataset = pd.DataFrame(data=dataset, columns=cols)
-    return dataset
-
-
-# ________________________________
-
-
-ACT_LABELS = ["dws", "ups", "wlk", "jog", "std", "sit"]
-TRIAL_CODES = {
-    ACT_LABELS[0]: [1, 2, 11],
-    ACT_LABELS[1]: [3, 4, 12],
-    ACT_LABELS[2]: [7, 8, 15],
-    ACT_LABELS[3]: [9, 16],
-    ACT_LABELS[4]: [6, 14],
-    ACT_LABELS[5]: [5, 13]
+STATE = {
+    "dws": 0,
+    "jog": 1,
+    "sit": 2,
+    "std": 3,
+    "ups": 4,
+    "wlk": 5,
 }
 
+
+def dataset_motion_sense(type="Device Motion"):
+    list = []
+    for folder in os.listdir(f"dataset/Motion Sense/{type}"):
+        state = STATE.get(folder[:3])
+        for file in os.listdir(f"dataset/Motion Sense/{type}/{folder}"):
+            df = pd.read_csv(f"dataset/Motion Sense/{type}/{folder}/{file}")
+            df.pop(df.columns[0])
+            df["state"] = state
+            list.append(df)
+    return pd.concat(list)
+
+
 if __name__ == '__main__':
-    ## Here we set parameter to build labeld time-series from dataset of "(A)DeviceMotion_data"
-    ## attitude(roll, pitch, yaw); gravity(x, y, z); rotationRate(x, y, z); userAcceleration(x,y,z)
-    sdt = ["attitude", "userAcceleration"]
-    print("[INFO] -- Selected sensor data types: " + str(sdt))
-    act_labels = ACT_LABELS[0:4]
-    print("[INFO] -- Selected activites: " + str(act_labels))
-    trial_codes = [TRIAL_CODES[act] for act in act_labels]
-    dt_list = set_data_types(sdt)
-    dataset = creat_time_series(dt_list, act_labels, trial_codes, mode="raw", labeled=True)
-    print("[INFO] -- Shape of time-Series dataset:" + str(dataset.shape))
-    print(dataset.head())
+    dataframe = dataset_motion_sense("Accelerometer")
+
+    x, y = create_window(dataframe, window_size=256, stride=32)
+
+    n_features, n_outputs = x.shape[2], x.shape[1]
+    n_steps, n_length = 4, 64
+    x = x.reshape((x.shape[0], n_steps, 1, n_length, n_features))
+
+    size = len(x)
+    train_x = x[:round(size * .8)]
+    train_y = y[:round(size * .8)]
+    val_x = x[round(size * .7):round(size * .9)]
+    val_y = y[round(size * .7):round(size * .9)]
+    test_x = x[round(size * .9):]
+    test_y = y[round(size * .9):]
+
+    model = Sequential()
+    model.add(ConvLSTM2D(filters=128, kernel_size=(1, 3), input_shape=(n_steps, 1, n_length, n_features)))
+    model.add(Dropout(0.3))
+    model.add(Flatten())
+    model.add(Dense(256, activation='relu'))
+    model.add(Dropout(0.3))
+    model.add(Dense(64, activation='relu'))
+    model.add(Dense(6, activation='softmax'))
+    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+    # fit network
+    model.fit(x=train_x, y=train_y, validation_data=(val_x, val_y), epochs=16, batch_size=1024)
+
+    model.evaluate(test_x, test_y)
